@@ -1,0 +1,32 @@
+name: Daily Stock Scan
+
+on:
+  schedule:
+    - cron: '0 22 * * 1-5' # Elke doordeweekse dag om 22:00 UTC (na Wall Street sluiting)
+  workflow_dispatch:      # Hiermee kun je ook handmatig op 'Run' klikken
+
+jobs:
+  run-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code ophalen
+        uses: actions/checkout@v3
+
+      - name: Python instellen
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Bibliotheken installeren
+        run: pip install -r requirements.txt
+
+      - name: AI Script draaien
+        run: python scanner.py
+
+      - name: Resultaten opslaan in GitHub
+        run: |
+          git config --global user.name 'AI-Bot'
+          git config --global user.email 'bot@github.com'
+          git add README.md
+          git commit -m "Automatische AI Update" || echo "Geen wijzigingen"
+          git push

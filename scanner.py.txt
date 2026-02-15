@@ -1,0 +1,71 @@
+import yfinance as yf
+import pandas as pd
+import pandas_ta as ta
+from sklearn.ensemble import RandomForestClassifier
+import datetime
+
+# Stel hier je favoriete aandelen in
+TICKERS = ["NVDA", "AAPL", "TSLA", "AMD", "MSFT", "META", "AMZN", "BTC-USD"]
+
+def analyze_stock(ticker):
+    try:
+        df = yf.download(ticker, period="2y", interval="1d", progress=False)
+        if len(df) < 100: return None
+
+        # Indicatoren berekenen
+        df["RSI"] = ta.rsi(df["Close"], length=14)
+        macd = ta.macd(df["Close"])
+        df["MACD"] = macd["MACD_12_26_9"]
+        df["EMA_20"] = ta.ema(df["Close"], length=20)
+        df["Price_vs_EMA20"] = df["Close"] / df["EMA_20"]
+        
+        # Target: Gaan we morgen omhoog?
+        df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+        df = df.dropna()
+
+        # AI Model Training
+        predictors = ["RSI", "MACD", "Price_vs_EMA20"]
+        model = RandomForestClassifier(n_estimators=100, min_samples_split=50, random_state=42)
+        
+        # Trainen op alle data behalve de laatste dag
+        model.fit(df[predictors].iloc[:-1], df["Target"].iloc[:-1])
+
+        # Laatste voorspelling (voor morgen)
+        last_row = df[predictors].iloc[-1:]
+        prediction = model.predict(last_row)[0]
+        prob = model.predict_proba(last_row)[0]
+        confidence = prob[1] if prediction == 1 else prob[0]
+
+        return {
+            "Ticker": ticker,
+            "Prijs": f"${df['Close'].iloc[-1]:.2f}",
+            "Signaal": "🚀 BUY" if prediction == 1 else "📉 SELL",
+            "Vertrouwen": f"{confidence*100:.1f}%",
+            "RSI": round(df["RSI"].iloc[-1], 1)
+        }
+    except:
+        return None
+
+# Scan uitvoeren
+print("AI Analyse start...")
+results = [analyze_stock(t) for t in TICKERS if analyze_stock(t) is not None]
+
+# Markdown Tabel maken
+df_res = pd.DataFrame(results)
+tijdstip = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+markdown_output = f"""
+# 🤖 AI Market Scanner Dashboard
+*Laatste update: {tijdstip} (UTC)*
+
+| Ticker | Prijs | Signaal | Betrouwbaarheid | RSI |
+| :--- | :--- | :--- | :--- | :--- |
+{df_res.to_markdown(index=False, tablefmt="pipe").split('\\n', 2)[-1]}
+
+> **Disclaimer:** Gebruik deze AI-voorspellingen alleen als hulpmiddel, niet als direct financieel advies.
+"""
+
+with open("README.md", "w") as f:
+    f.write(markdown_output)
+
+print("Scan voltooid en README.md bijgewerkt.")
